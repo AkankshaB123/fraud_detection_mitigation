@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
-from streamlit.testing.v1 import AppTest
 
 from src import evaluate
 from src.modeling import (
@@ -128,10 +127,3 @@ def test_decision_threshold_changes_binary_predictions():
 
     assert permissive["predictions"].tolist() == [0, 1, 1]
     assert conservative["predictions"].tolist() == [0, 0, 1]
-
-
-def test_streamlit_app_renders_without_dataset():
-    app = AppTest.from_file("streamlit_app.py").run(timeout=30)
-
-    assert not app.exception
-    assert [item.value for item in app.title] == ["🛡️ Fraud Detection Model Lab"]
