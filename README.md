@@ -80,6 +80,8 @@ Training writes `model.joblib`; evaluation writes `metrics.json` and fails if RO
 
 ## Interactive Streamlit App
 
+**Dashboard status:** the app is implemented and pushed, but a hosted dashboard URL has not been created yet. Deploy it from [Streamlit Community Cloud](https://share.streamlit.io/) after signing in; select this repository's `main` branch and `streamlit_app.py`. Once Streamlit provisions the app, replace this status with its public `*.streamlit.app` URL. The source entry point is [streamlit_app.py](streamlit_app.py).
+
 Launch the app locally from the repository root:
 
 ```bash
