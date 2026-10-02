@@ -29,19 +29,10 @@ jobs:
         black --check src/
         flake8 src/
 
-    - name: Train Model
-      run: |
-        python -m src.train
-
-    - name: Evaluate Model & Gate Check
-      run: |
-        python -m src.evaluate
-
     - name: Run Pytest
       run: |
-        pytest tests/
+        pytest -v tests/
 
     - name: Build Docker Container
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: |
-        docker build -t fraud-detection-service:latest .
+        docker build -t fraud-detection-mlops:ci .

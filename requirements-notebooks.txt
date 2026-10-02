@@ -1,0 +1,6 @@
+jupyterlab>=4.0
+matplotlib>=3.7
+seaborn>=0.12
+imbalanced-learn>=0.10
+xgboost>=1.7
+kagglehub>=0.3

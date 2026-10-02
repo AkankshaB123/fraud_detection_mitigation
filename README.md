@@ -1,12 +1,108 @@
-# Real-Time Fraud Detection & Mitigation Engine
+# Credit Card Fraud Detection & MLOps
 
-This repository contains the production system design, benchmarking evaluation, and monitoring architecture for an automated **Fraud Detection & Mitigation System**. The pipeline encompasses end-to-end dataset preprocessing, class imbalance resolution via SMOTE and Undersampling, evaluation across multiple model architectures, and continuous drift monitoring.
+This repository combines exploratory fraud-detection notebooks with a small, reproducible batch training and evaluation pipeline. The modular Python code currently trains Logistic Regression; other model-family results below come from notebook experiments. The API, mitigation, and drift-monitoring sections describe a proposed architecture and are not currently running services.
+
+## Repository Structure
+
+```text
+fraud_detection_mitigation/
+├── .github/
+│   └── workflows/
+│       └── mlops-pipeline.yml    # CI: lint, unit tests, Docker build
+├── config/
+│   └── config.yaml               # Dataset path, model parameters, metric gate
+├── data/                         # Create locally; dataset is not committed
+│   └── creditcard.csv
+├── notebooks/                    # EDA, preprocessing, model experiments, inference
+├── src/
+│   ├── __init__.py
+│   ├── data.py                    # Load, clean, and split the dataset
+│   ├── train.py                   # Train and save Logistic Regression
+│   └── evaluate.py                # Write metrics and enforce the ROC-AUC gate
+├── tests/
+│   └── test_model.py              # Isolated evaluation unit tests
+├── Dockerfile
+├── requirements.txt
+├── requirements-notebooks.txt     # Optional notebook/benchmark dependencies
+└── README.md
+```
+
+The notebooks have been moved out of the repository root into [notebooks/](notebooks/):
+
+* [Fraud_Classification_EDA.ipynb](notebooks/Fraud_Classification_EDA.ipynb) — exploratory data analysis.
+* [Data_Pre_Processing_and_Modelling.ipynb](notebooks/Data_Pre_Processing_and_Modelling.ipynb) — preprocessing and resampling experiments.
+* [Fraud_Prevention_Pipeline.ipynb](notebooks/Fraud_Prevention_Pipeline.ipynb) — classifier-family benchmark.
+* [Model_inference.ipynb](notebooks/Model_inference.ipynb) — inference exploration.
+
+## Clone and Run
+
+### 1. Clone the repository
+
+If you are starting from the GitHub repository (or a fork), clone it and enter the checkout:
+
+```bash
+git clone https://github.com/AkankshaB123/fraud_detection_mitigation.git
+cd fraud_detection_mitigation
+```
+
+For your own fork, replace the URL with your fork's clone URL.
+
+### 2. Set up Python
+
+Use Python 3.10 or newer, then create and activate a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell or `.venv\Scripts\activate.bat` in Command Prompt.
+
+### 3. Add the dataset locally
+
+The credit-card CSV is excluded from Git because it is a large external dataset. Obtain the Credit Card Fraud Detection dataset from [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud), create `data/`, and place the file at `data/creditcard.csv`. The path can be changed in `config/config.yaml`. Do not commit the dataset or private transaction data.
+
+### 4. Train, evaluate, and test
+
+Run these commands from the repository root, with the virtual environment active and dataset in place:
+
+```bash
+python -m src.train
+python -m src.evaluate
+pytest -v tests/
+```
+
+Training writes `model.joblib`; evaluation writes `metrics.json` and fails if ROC-AUC is below `metrics.min_auc_roc` in the config. Both artifacts are ignored by Git. Unit tests use stubbed model/data inputs and do not require the dataset; run them independently with `pytest -v tests/`.
+
+### 5. Run the training container (optional)
+
+Build and run the Docker image from the repository root. The bind mount makes the local dataset available and keeps generated artifacts on the host:
+
+```bash
+docker build -t fraud-detection-mlops .
+docker run --rm -v "$PWD:/app" fraud-detection-mlops
+```
+
+The container runs training followed by evaluation. Docker is optional; the Python commands above do the same work.
+
+### 6. Open the research notebooks (optional)
+
+Install the optional packages and start JupyterLab:
+
+```bash
+python -m pip install -r requirements-notebooks.txt
+jupyter lab notebooks/
+```
+
+Some notebook cells use Google Colab's `google.colab.drive` API or a hosted runtime. Those cells need adapting for local execution; use the local dataset path above. The research notebooks are exploratory and are not required for the modular CLI pipeline or unit tests.
 
 ---
 
-## System Architecture
+## Reference System Architecture
 
-The microservice ingests transaction payloads, applies feature scaling, runs low-latency inference across trained model candidates, and routes actions based on fraud probability thresholds.
+The following diagram is a design reference, not an implemented HTTP service. The checked-in application currently provides batch train/evaluate commands only.
 
 ```
                   +--------------------------+
@@ -62,6 +158,54 @@ All 10 evaluated model variants (spanning Logistic Regression, Decision Trees, R
 | **8** | **Random Forest** | **Undersampled** | **90.88%** | **98.56%** | **84.57%** | **91.03%** |
 | **9** | **RBF SVM** | **Undersampled** | **90.88%** | **99.27%** | **83.95%** | **90.97%** |
 | **10**| **Decision Tree** | **Undersampled** | **88.51%** | **93.84%** | **84.57%** | **88.96%** |
+
+### Model Family Guide
+
+The benchmark covers five classifier families. The score pairs below compare the variants that were actually evaluated; they are not results for every possible model/resampling combination.
+
+#### Logistic Regression — linear baseline
+
+Logistic Regression estimates a linear decision boundary and is a useful low-complexity baseline. It is fast to train and straightforward to inspect, but can miss complex feature interactions unless those are represented in the input features.
+
+* **SMOTE:** 98.04% accuracy, 99.13% precision, 96.94% recall, and 98.02% F1.
+* **Random undersampling:** 91.89% accuracy, 97.92% precision, 87.04% recall, and 92.16% F1.
+* **Takeaway:** Strong baseline and the only classifier currently implemented by the modular `src/train.py` entry point. The SMOTE result is the better of the two reported variants.
+
+#### Decision Tree — interpretable nonlinear rules
+
+A single tree can model nonlinear feature interactions and express its predictions as rules. It is easier to explain than an ensemble, but its results can vary substantially with tree depth and training data.
+
+* **SMOTE:** 98.65% accuracy, 98.71% precision, 98.60% recall, and 98.66% F1.
+* **Random undersampling:** 88.51% accuracy, 93.84% precision, 84.57% recall, and 88.96% F1.
+* **Takeaway:** The SMOTE variant has a useful balance of precision and recall, while the undersampled variant is the lowest-F1 model in this benchmark.
+
+#### Random Forest — bagged tree ensemble
+
+Random Forest averages many randomized decision trees. This usually reduces the instability of a single tree while retaining the ability to learn nonlinear relationships.
+
+* **SMOTE:** 99.93% accuracy, 99.95% precision, 99.91% recall, and 99.93% F1; 41 false positives and 76 false negatives in the reported confusion matrix.
+* **Random undersampling:** 90.88% accuracy, 98.56% precision, 84.57% recall, and 91.03% F1.
+* **Takeaway:** The SMOTE variant leads the reported table on accuracy, precision, and F1, and has the fewest false positives among the SMOTE variants shown. It is the benchmark's balanced-performance choice, subject to independent validation.
+
+#### XGBoost — gradient-boosted trees
+
+XGBoost builds trees sequentially, with each stage focusing on errors from earlier stages. It can capture complex patterns but has more tuning and deployment considerations than the linear baseline.
+
+* **SMOTE:** 99.92% accuracy, 99.90% precision, 99.94% recall, and 99.92% F1; 89 false positives and 54 false negatives in the reported confusion matrix.
+* **Random undersampling:** 91.22% accuracy, 96.58% precision, 87.04% recall, and 91.56% F1.
+* **Takeaway:** The SMOTE variant has the highest reported recall and the fewest false negatives, making it the candidate to investigate when missed fraud is especially costly. Its higher false-positive count than Random Forest may mean more legitimate transactions require review.
+
+#### Support Vector Machines — margin-based classifiers
+
+SVMs separate classes by maximizing a decision margin. Their behavior depends on the kernel and feature scaling; the two reported SVM rows use different kernels and resampling strategies, so they should not be treated as a controlled head-to-head comparison.
+
+* **Linear SVM with SMOTE:** 97.53% accuracy, 99.15% precision, 95.89% recall, and 97.49% F1.
+* **RBF SVM with undersampling:** 90.88% accuracy, 99.27% precision, 83.95% recall, and 90.97% F1.
+* **Takeaway:** The linear SMOTE variant maintains high precision with stronger recall than the reported undersampled RBF variant. The RBF result's high precision comes with more missed fraud, so precision alone is not enough to select it.
+
+### Benchmark Scope and Validation Notes
+
+The benchmark figures are recorded from the exploratory notebook experiments, not generated by the modular trainer or by the unit tests. The checked-in `src/train.py` currently supports Logistic Regression only; the other classifier families are benchmark candidates rather than selectable production models. Before using the table to make deployment decisions, rerun the comparisons with a stratified holdout that reflects the natural class imbalance and apply SMOTE **only to each training fold**. Resampling before splitting can leak information into evaluation and inflate scores. Also validate thresholds and review capacity against current transaction costs and data.
 
 ---
 

@@ -5,10 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src
-COPY config/ ./config
-COPY model.joblib .
+COPY src/ ./src/
+COPY config/ ./config/
 
-EXPOSE 8000
-
-CMD ["python", "-m", "src.evaluate"]
+CMD ["sh", "-c", "python -m src.train && python -m src.evaluate"]

@@ -1,6 +1,11 @@
 import json
 import joblib
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    roc_auc_score,
+)
 import yaml
 from src.data import load_and_clean_data
 
@@ -27,8 +32,10 @@ def evaluate_model():
 
     # Performance Gate
     if metrics["roc_auc"] < config["metrics"]["min_auc_roc"]:
+        threshold = config["metrics"]["min_auc_roc"]
         raise ValueError(
-            f"Model ROC-AUC ({metrics['roc_auc']:.4f}) is below threshold ({config['metrics']['min_auc_roc']})!"
+            f"Model ROC-AUC ({metrics['roc_auc']:.4f}) is below "
+            f"threshold ({threshold})!"
         )
 
     print("Model evaluation passed successfully.")
