@@ -1,6 +1,6 @@
 # Credit Card Fraud Detection & MLOps
 
-This repository combines exploratory fraud-detection notebooks with a small, reproducible batch training and evaluation pipeline. The modular Python code currently trains Logistic Regression; other model-family results below come from notebook experiments. The API, mitigation, and drift-monitoring sections describe a proposed architecture and are not currently running services.
+This repository combines exploratory fraud-detection notebooks, a reproducible batch pipeline, and a Streamlit model lab. The app can train and compare Logistic Regression, Decision Tree, Random Forest, XGBoost, linear SVM, and RBF SVM from an uploaded/local labeled CSV, tune model hyperparameters, and score transaction feature rows. The API, mitigation, and drift-monitoring sections describe a proposed architecture and are not currently running services.
 
 ## Repository Structure
 
@@ -17,13 +17,15 @@ fraud_detection_mitigation/
 ├── src/
 │   ├── __init__.py
 │   ├── data.py                    # Load, clean, and split the dataset
+│   ├── modeling.py                # Model factories, optional SMOTE, metrics
 │   ├── train.py                   # Train and save Logistic Regression
 │   └── evaluate.py                # Write metrics and enforce the ROC-AUC gate
 ├── tests/
-│   └── test_model.py              # Isolated evaluation unit tests
+│   └── test_model.py              # Modeling and evaluation unit tests
 ├── Dockerfile
 ├── requirements.txt
 ├── requirements-notebooks.txt     # Optional notebook/benchmark dependencies
+├── streamlit_app.py               # Interactive training, comparison, scoring UI
 └── README.md
 ```
 
@@ -75,6 +77,50 @@ pytest -v tests/
 ```
 
 Training writes `model.joblib`; evaluation writes `metrics.json` and fails if ROC-AUC is below `metrics.min_auc_roc` in the config. Both artifacts are ignored by Git. Unit tests use stubbed model/data inputs and do not require the dataset; run them independently with `pytest -v tests/`.
+
+## Interactive Streamlit App
+
+Launch the app locally from the repository root:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Upload the Kaggle CSV in the sidebar, or place it at `data/creditcard.csv`. The app validates the expected `Time`, `V1`–`V28`, `Amount`, and `Class` columns, makes a stratified train/test split, and keeps the held-out test rows out of fitting. To make kernel-SVM experiments practical in the hosted app, it then takes user-configurable stratified caps (default 5,000 training rows and 10,000 evaluation rows). Choose **Train selected model** to fit one classifier or **Compare all model defaults** to benchmark all six model choices on the same sampled split. Optional SMOTE is applied inside each training pipeline only; it never resamples the held-out test rows.
+
+### Input and output parameters
+
+* **Training input:** labeled CSV with the 30 numeric Kaggle features and `Class` (`0` legitimate, `1` fraud). The app removes incomplete/non-finite rows and duplicates and reports how many remain.
+* **Transaction scoring input:** edit the one-row feature grid or upload a CSV containing the 30 feature columns (without `Class`). It can score one or many rows after a model has been trained in the current app session.
+* **Outputs:** fraud probability and threshold-based prediction per row; for held-out evaluation, accuracy, precision, recall, F1, ROC-AUC, and a 2×2 confusion matrix.
+* **Decision threshold:** adjustable separately from model hyperparameters. Changing it recalculates held-out classification metrics and predictions from the same probabilities; ROC-AUC is threshold-independent.
+
+### Hyperparameters exposed
+
+| Model | Interactive controls |
+| --- | --- |
+| Logistic Regression | `C`, maximum iterations, class weight |
+| Decision Tree | maximum depth, minimum samples per leaf, class weight |
+| Random Forest | number of trees, maximum depth, minimum samples per leaf, class weight |
+| XGBoost | boosting rounds, tree depth, learning rate |
+| Linear SVM | `C`, class weight |
+| RBF SVM | `C`, kernel coefficient (`gamma`), class weight |
+
+The all-model comparison uses the defaults listed in `src/modeling.py`; tune and retrain a selected model for a custom-parameter evaluation. The row caps can be raised for local experiments, but larger RBF-SVM runs consume substantially more compute and memory. Models and uploaded data are held in the app's runtime session and are not persisted as production artifacts.
+
+### Deploy to Streamlit Community Cloud
+
+1. Push or fork this repository to GitHub.
+2. Sign in at [share.streamlit.io](https://share.streamlit.io/) and choose **Create app**.
+3. Select the repository, `main` branch, and `streamlit_app.py` as the app file.
+4. Deploy. Community Cloud installs dependencies from `requirements.txt`.
+5. In the deployed app, upload an appropriately licensed dataset to run experiments. Avoid uploading personal, confidential, or live customer transaction information to a public demo.
+
+The app requires access to the labeled dataset at runtime; the data is intentionally not checked into GitHub. Streamlit Community Cloud is suitable for a demo, not a production fraud-decision service. The demo is session-scoped and a restart clears trained models and uploaded data.
+
+### Reading model scores responsibly
+
+The fraud dataset is extremely imbalanced, so a model that labels everything legitimate can still show very high accuracy. Compare recall (fraud caught), precision (alerts that are fraud), false-positive and false-negative counts, and ROC-AUC—not accuracy alone. The UI scores a stratified holdout from the uploaded dataset; results depend on that dataset, split, resampling, and parameters. They are not a guarantee of future accuracy. These metrics are exploratory, not independently audited or production-validated.
 
 ### 5. Run the training container (optional)
 

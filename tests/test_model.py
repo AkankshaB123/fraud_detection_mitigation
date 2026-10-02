@@ -2,8 +2,16 @@ import json
 
 import numpy as np
 import pytest
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
 
 from src import evaluate
+from src.modeling import (
+    DEFAULT_PARAMS,
+    MODEL_NAMES,
+    evaluate_predictions,
+    fit_and_evaluate,
+)
 
 
 class StubModel:
@@ -47,3 +55,75 @@ def test_evaluation_rejects_auc_below_threshold(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="below threshold"):
         evaluate.evaluate_model()
+
+
+@pytest.mark.parametrize("model_name", MODEL_NAMES)
+def test_all_model_choices_fit_and_produce_probabilities(model_name):
+    features, labels = make_classification(
+        n_samples=120,
+        n_features=8,
+        n_informative=5,
+        weights=[0.8, 0.2],
+        random_state=42,
+    )
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, labels, test_size=0.25, random_state=42, stratify=labels
+    )
+    params = DEFAULT_PARAMS[model_name].copy()
+    if model_name == "Random Forest":
+        params["n_estimators"] = 20
+    elif model_name == "XGBoost":
+        params["n_estimators"] = 10
+
+    model, metrics = fit_and_evaluate(
+        model_name,
+        params,
+        False,
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+    )
+
+    probabilities = model.predict_proba(X_test)[:, 1]
+    assert probabilities.shape == (len(X_test),)
+    assert np.all((probabilities >= 0) & (probabilities <= 1))
+    assert 0.0 <= metrics["roc_auc"] <= 1.0
+
+
+def test_smote_is_applied_inside_training_pipeline():
+    features, labels = make_classification(
+        n_samples=180,
+        n_features=8,
+        n_informative=5,
+        weights=[0.85, 0.15],
+        random_state=42,
+    )
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, labels, test_size=0.25, random_state=42, stratify=labels
+    )
+
+    model, metrics = fit_and_evaluate(
+        "Logistic Regression",
+        DEFAULT_PARAMS["Logistic Regression"],
+        True,
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+    )
+
+    assert "smote" in model.named_steps
+    assert 0.0 <= metrics["roc_auc"] <= 1.0
+    assert metrics["confusion_matrix"].shape == (2, 2)
+
+
+def test_decision_threshold_changes_binary_predictions():
+    labels = np.array([0, 1, 1])
+    probabilities = np.array([0.4, 0.55, 0.9])
+
+    permissive = evaluate_predictions(labels, probabilities, threshold=0.5)
+    conservative = evaluate_predictions(labels, probabilities, threshold=0.6)
+
+    assert permissive["predictions"].tolist() == [0, 1, 1]
+    assert conservative["predictions"].tolist() == [0, 0, 1]
