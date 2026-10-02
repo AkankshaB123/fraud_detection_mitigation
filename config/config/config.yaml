@@ -1,0 +1,19 @@
+data:
+  raw_path: "data/creditcard.csv"
+  test_size: 0.2
+  random_state: 42
+
+preprocessing:
+  drop_duplicates: true
+  scaling_cols: ["Amount", "Time"]
+
+model:
+  type: "LogisticRegression"
+  params:
+    max_iter: 1000
+    C: 1.0
+    random_state: 42
+
+metrics:
+  min_auc_roc: 0.85
+  min_f1_score: 0.70
