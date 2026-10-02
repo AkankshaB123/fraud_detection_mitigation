@@ -291,11 +291,19 @@ else:
             if "comparison_results" in st.session_state:
                 st.subheader("Held-out comparison (sorted by ROC-AUC)")
                 st.dataframe(
-                    st.session_state["comparison_results"].style.format(
-                        {metric: "{:.4f}" for metric in ["Accuracy", "Precision", "Recall", "F1", "ROC-AUC"]}
-                    ),
+                    st.session_state["comparison_results"],
                     use_container_width=True,
                     hide_index=True,
+                    column_config={
+                        metric: st.column_config.NumberColumn(format="%.4f")
+                        for metric in [
+                            "Accuracy",
+                            "Precision",
+                            "Recall",
+                            "F1",
+                            "ROC-AUC",
+                        ]
+                    },
                 )
                 st.caption(
                     "Every candidate uses the same stratified split and training-only preprocessing. "
